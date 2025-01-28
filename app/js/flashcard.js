@@ -14,6 +14,7 @@ var pairs; //pairs is all pairs in bunch, current pair is the one currently bein
 var menuToggled = false;
 var currentReversed; // bool if the currentPair is asked standard or reversed
 let pairsRef = []; //array of references to each pair
+let flaggedPairs = []; //array of references to each flagged pair (experimental-use only)
 
 const url = document.location.href;
 const id = url.split("?")[1].split("=")[1].replaceAll("%20", " "); //gets the id of bunch from query string
@@ -28,7 +29,7 @@ let inResetMenu = false;
 window.onload = () => {
     //requests pairs data from main
     ipcRenderer.send("globalSettings:getAll");
-    //reuquests studySettings data from main
+    //requests studySettings data from main
     //NOTE Settings must be gotten before pairs
     ipcRenderer.send("studySettings:getAll");
     //sets lastUsed to current time
@@ -187,7 +188,7 @@ for (btn of testToggleBtns) {
     btn.addEventListener("click", generateTest);
 }
 
-//TODO chnage to only on down
+//TODO change to only on down
 window.addEventListener("keydown", keyListener);
 function keyListener(e) {
     if (!e.repeat) {
@@ -275,17 +276,21 @@ function updateMenu() {
 
 let lastPrompt;
 function setCurrentPair() {
-    let index = Math.floor(Math.random() * pairsRef.length);
+    if (settings.experimentalSpacedRepetition) {
+        setCurrentPairExperimental()
+    } else {
+        let index = Math.floor(Math.random() * pairsRef.length);
 
-    let count = 0;
-    if (pairsRef.length > 1) {
-        while (pairsRef[index].prompt === lastPrompt && count < 5) {
-            index = Math.floor(Math.random() * pairsRef.length);
-            count += 1; //after five trys j continue anyway (need this for repeat prompts)
+        let count = 0;
+        if (pairsRef.length > 1) {
+            while (pairsRef[index].prompt === lastPrompt && count < 5) {
+                index = Math.floor(Math.random() * pairsRef.length);
+                count += 1; //after five tries j continue anyway (need this for repeat prompts)
+            }
+            lastPrompt = pairsRef[index].prompt;
         }
-        lastPrompt = pairsRef[index].prompt;
+        currentPair = pairsRef[index];
     }
-    currentPair = pairsRef[index];
 
     if (bunchSettings.pairOrder.bothrs) {
         if (currentPair.revCalls > 0) {
@@ -306,26 +311,30 @@ function setCurrentPair() {
 }
 
 function createPairsRef() {
-    pairsRef = [];
-    if (bunchSettings.pairOrder.standard) {
-        for (x = 0; x < pairs.length; x++) {
-            if (pairs[x].calls > 0) {
-                pairsRef.push(pairs[x]); //"Objects and arrays are pushed as a pointer to the original object"
+    if (settings.experimentalSpacedRepetition) {
+        createPairsRefExperimental()
+    } else {
+        pairsRef = [];
+        if (bunchSettings.pairOrder.standard) {
+            for (x = 0; x < pairs.length; x++) {
+                if (pairs[x].calls > 0) {
+                    pairsRef.push(pairs[x]); //"Objects and arrays are pushed as a pointer to the original object"
+                }
             }
-        }
-    } else if (bunchSettings.pairOrder.reversed) {
-        for (x = 0; x < pairs.length; x++) {
-            if (pairs[x].revCalls > 0) {
-                pairsRef.push(pairs[x]);
+        } else if (bunchSettings.pairOrder.reversed) {
+            for (x = 0; x < pairs.length; x++) {
+                if (pairs[x].revCalls > 0) {
+                    pairsRef.push(pairs[x]);
+                }
             }
-        }
-    } else if (
-        bunchSettings.pairOrder.bothsr ||
-        bunchSettings.pairOrder.bothrs
-    ) {
-        for (x = 0; x < pairs.length; x++) {
-            if (pairs[x].calls > 0 || pairs[x].revCalls > 0) {
-                pairsRef.push(pairs[x]);
+        } else if (
+            bunchSettings.pairOrder.bothsr ||
+            bunchSettings.pairOrder.bothrs
+        ) {
+            for (x = 0; x < pairs.length; x++) {
+                if (pairs[x].calls > 0 || pairs[x].revCalls > 0) {
+                    pairsRef.push(pairs[x]);
+                }
             }
         }
     }
@@ -334,20 +343,24 @@ function createPairsRef() {
 }
 
 function generateCalls() {
-    if (bunchSettings.pairOrder.bothrs || bunchSettings.pairOrder.bothsr) {
-        for (x = 0; x < pairs.length; x++) {
-            pairs[x].calls = settings.timesCorrect;
-            pairs[x].revCalls = settings.timesCorrect;
-        }
-    } else if (bunchSettings.pairOrder.reversed) {
-        for (x = 0; x < pairs.length; x++) {
-            pairs[x].calls = 0;
-            pairs[x].revCalls = settings.timesCorrect;
-        }
-    } else if (bunchSettings.pairOrder.standard) {
-        for (x = 0; x < pairs.length; x++) {
-            pairs[x].calls = settings.timesCorrect;
-            pairs[x].revCalls = 0;
+    if (settings.experimentalSpacedRepetition) {
+        generateCallsExperimental()
+    } else {
+        if (bunchSettings.pairOrder.bothrs || bunchSettings.pairOrder.bothsr) {
+            for (x = 0; x < pairs.length; x++) {
+                pairs[x].calls = settings.timesCorrect;
+                pairs[x].revCalls = settings.timesCorrect;
+            }
+        } else if (bunchSettings.pairOrder.reversed) {
+            for (x = 0; x < pairs.length; x++) {
+                pairs[x].calls = 0;
+                pairs[x].revCalls = settings.timesCorrect;
+            }
+        } else if (bunchSettings.pairOrder.standard) {
+            for (x = 0; x < pairs.length; x++) {
+                pairs[x].calls = settings.timesCorrect;
+                pairs[x].revCalls = 0;
+            }
         }
     }
     setPairs();
@@ -356,24 +369,28 @@ function generateCalls() {
 
 let prevNumCalls;
 function updateCalls(correct) {
-    if (correct) {
-        callsString = currentReversed ? "revCalls" : "calls";
-        if (currentPair[callsString] > 0) {
-            currentPair[callsString] -= 1;
-            if (currentPair["calls"] === 0 && currentPair["revCalls"] === 0) {
-                const index = pairsRef.indexOf(currentPair);
-                pairsRef.splice(index, 1);
-            }
-        }
+    if (settings.experimentalSpacedRepetition) {
+        updateCallsExperimental(correct)
     } else {
-        callsString = currentReversed ? "revCalls" : "calls";
-        prevNumCalls = currentPair[callsString];
-        if (
-            currentPair[callsString] !== 0 &&
-            currentPair[callsString] < settings.timesCorrect &&
-            settings.penalizeIncorrect
-        ) {
-            currentPair[callsString] += 1;
+        if (correct) {
+            callsString = currentReversed ? "revCalls" : "calls";
+            if (currentPair[callsString] > 0) {
+                currentPair[callsString] -= 1;
+                if (currentPair["calls"] === 0 && currentPair["revCalls"] === 0) {
+                    const index = pairsRef.indexOf(currentPair);
+                    pairsRef.splice(index, 1);
+                }
+            }
+        } else {
+            callsString = currentReversed ? "revCalls" : "calls";
+            prevNumCalls = currentPair[callsString];
+            if (
+                currentPair[callsString] !== 0 &&
+                currentPair[callsString] < settings.timesCorrect &&
+                settings.penalizeIncorrect
+            ) {
+                currentPair[callsString] += 1;
+            }
         }
     }
 }
@@ -383,22 +400,180 @@ function iWasRight() {
     clearTimeout(incorrectTimeout);
     noTimeout = true;
 
-    callsString = currentReversed ? "revCalls" : "calls";
-
-    if (prevNumCalls === settings.timesCorrect) {
-        //if calls was as high as possible
-        currentPair[callsString] -= 1; //only take away one bc the initial incorrect did nothing
+    if (settings.experimentalSpacedRepetition) {
+        iWasRightExperimental()
     } else {
-        currentPair[callsString] -= 2; //one to correct initial incorrect and one for rigth answer
-    }
+        callsString = currentReversed ? "revCalls" : "calls";
 
-    if (currentPair["calls"] === 0 && currentPair["revCalls"] === 0) {
-        const index = pairsRef.indexOf(currentPair);
-        pairsRef.splice(index, 1);
-    }
+        if (prevNumCalls === settings.timesCorrect) {
+            //if calls was as high as possible
+            currentPair[callsString] -= 1; //only take away one bc the initial incorrect did nothing
+        } else {
+            currentPair[callsString] -= 2; //one to correct initial incorrect and one for right answer
+        }
 
+        if (currentPair["calls"] === 0 && currentPair["revCalls"] === 0) {
+            const index = pairsRef.indexOf(currentPair);
+            pairsRef.splice(index, 1);
+        }
+    }
     resetPage();
 }
+
+/* ------------------------------------------------------------------------------------------------------- */
+
+// Spaced-repetition algorithm that introduces new terms very slowly.
+// Save array of terms with the following fields:
+// - term
+// - times seen
+// - total right
+// - last n right
+// 
+// +---------------+--------------+--------------------------------------+
+// | percent wrong | last n right | when to show word again (in n cards) |
+// +---------------+--------------+--------------------------------------+
+// | >50%          | 0            | 0                                    |
+// +---------------+--------------+--------------------------------------+
+// | >50%          | 1            | 1                                    |
+// +---------------+--------------+--------------------------------------+
+// | >50%          | 2            | 2                                    |
+// +---------------+--------------+--------------------------------------+
+// | >50%          | 3            | 4                                    |
+// +---------------+--------------+--------------------------------------+
+// | >50%          | 4+           | 8                                    |
+// +---------------+--------------+--------------------------------------+
+// | 0< <50%       | n (<7)       | 2^n                                  |
+// +---------------+--------------+--------------------------------------+
+// | 0< <50%       | n (>=7)      | (n - 6)*100 (deprioritized)          |
+// +---------------+--------------+--------------------------------------+
+// | 0%            | 0            | n*100 (deprioritized)                |
+// +---------------+--------------+--------------------------------------+
+//
+// Each term has a "score", which is index + when to show word again value.
+// term weight = 1 / score
+// randomly choose term using weights
+// TODO: add reset button to reset stored values
+
+function createPairsRefExperimental() {
+    if (!Array.isArray(pairsRef) || pairsRef.length === 0) {
+        pairsRef = [];
+        if (bunchSettings.pairOrder.standard) {
+            for (x = 0; x < pairs.length; x++) {
+                pairsRef.push({
+                    'prompt': pairs[x]['prompt'],
+                    'answer': pairs[x]['answer'],
+                    'calls': 1, // deprecate eventually
+                    'revCalls': 0, // deprecate eventually
+                    'timesSeen': 0,
+                    'totalRight': 0,
+                    'lastNRight': 0,
+                    'scheduledNext': 0,
+                });
+            }
+        }
+    }
+}
+
+function setCurrentPairExperimental() {
+    let assigned = false;
+    for (x = 0; x < flaggedPairs.length; x++) {
+        if (flaggedPairs[x]['scheduledNext'] === 0) {
+            if (!assigned) {
+                currentPair = flaggedPairs[x];
+                assigned = true;
+                console.log(assigned);
+            }
+        } else {
+            flaggedPairs[x]['scheduledNext'] -= 1;
+        }
+    }
+
+    console.log(flaggedPairs);
+
+    // Grab from the non-flagged pile if no flagged terms are "ready"
+    if (!assigned) {
+        currentPair = pairsRef.reduce((minItem, currentItem) => 
+            currentItem.scheduledNext < minItem.scheduledNext ? currentItem : minItem
+        );
+    }
+}
+
+function generateCallsExperimental() {}
+
+function handleAnswer(correct) {
+    currentPair['timesSeen'] += 1;
+    if (correct) {
+        currentPair['totalRight'] += 1;
+        currentPair['lastNRight'] += 1;
+    } else {
+        currentPair['lastNRight'] = 0
+        const index = flaggedPairs.indexOf(currentPair);
+        if (index === -1) {
+            // Pop pair from normal pairsRef and push to flaggedPairs
+            flaggedPairs.push(currentPair);
+            const pairsRefIndex = pairsRef.indexOf(currentPair);
+            pairsRef.splice(pairsRefIndex, 1);
+        }
+    }
+
+    // Implement the above algorithm
+    timesSeen = currentPair['timesSeen'];
+    totalRight = currentPair['totalRight'];
+    lastNRight = currentPair['lastNRight'];
+    percentWrong = (timesSeen - totalRight) / timesSeen;
+
+    if (percentWrong > 0.5) {
+        switch (lastNRight) {
+            case 0:
+                score = 0;
+                break;
+            case 1:
+                score = 1;
+                break;
+            case 2:
+                score = 2;
+                break;
+            case 3:
+                score = 4;
+                break;
+            default:
+                score = 8;
+                break;
+        }
+    } else if (percentWrong > 0) {
+        if (lastNRight < 7) {
+            score = 2 ** lastNRight;
+        } else {
+            // Put it back in the normal queue
+            const index = pairsRef.indexOf(currentPair);
+            if (index === -1) {
+                // Pop pair from flaggedPairs and push to normal pairsRef
+                pairsRef.push(currentPair);
+                const flaggedPairsIndex = flaggedPairs.indexOf(currentPair);
+                flaggedPairs.splice(flaggedPairsIndex, 1);
+            }
+        }
+    } else {
+        score = lastNRight * 100;
+    }
+
+    currentPair['scheduledNext'] = score
+}
+
+function updateCallsExperimental(correct) {
+    handleAnswer(correct)
+}
+
+function iWasRightExperimental() {
+    handleAnswer(true)
+}
+
+// function handleTypedAnswer(correct) {
+//     handleAnswer(correct)
+// }
+
+/* ------------------------------------------------------------------------------------------------------- */
+
 
 var correctTimeout, incorrectTimeout;
 function showAnswer() {
@@ -1099,7 +1274,7 @@ function generateTest() {
         numTyped = Math.floor(numQuestions / numQuestionTypes) * numTyped;
         numTF = Math.floor(numQuestions / numQuestionTypes) * numTF;
 
-        //max descepency btwn total and sum of num___'s is 2
+        //max discrepancy btwn total and sum of num___'s is 2
 
         for (x = 0; x < 2; x++) {
             if (numMC + numTyped + numTF != numQuestions) {
@@ -1427,14 +1602,34 @@ function addPinYinText(val, poly) {
 
 function updateRemainingText() {
     if (settings.showRemaining && !inResetMenu) {
-        let remainingCount = 0;
-        for (x = 0; x < pairsRef.length; x++) {
-            remainingCount += pairsRef[x].revCalls + pairsRef[x].calls;
+        if (settings.experimentalSpacedRepetition) {
+            updateRemainingTextExperimental()
+        } else {
+            let remainingCount = 0;
+            for (x = 0; x < pairsRef.length; x++) {
+                remainingCount += pairsRef[x].revCalls + pairsRef[x].calls;
+            }
+            document.getElementById(
+                "remaining-text"
+            ).innerText = `${remainingCount} remaining`;
         }
-        document.getElementById(
-            "remaining-text"
-        ).innerText = `${remainingCount} remaining`;
     }
+}
+
+function updateRemainingTextExperimental() {
+    let notSeen = 0;
+    let learned = 0;
+    let learning = flaggedPairs.length;
+    for (x = 0; x < pairsRef.length; x++) {
+        if (pairsRef[x].scheduledNext === 0) {
+            notSeen += 1;
+        } else {
+            learned += 1;
+        }
+    }
+    document.getElementById(
+        "remaining-text"
+    ).innerText = `${learning} learning | ${notSeen} new | ${learned} learned`;
 }
 //#endregion
 

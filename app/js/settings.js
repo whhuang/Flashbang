@@ -64,6 +64,13 @@ document.getElementById("penalize-incorrect").addEventListener("change", () => {
     });
 });
 
+document.getElementById("experimental-spaced-repetition").addEventListener("change", () => {
+    ipcRenderer.send("globalSettings:set", {
+        key: "experimentalSpacedRepetition",
+        value: document.getElementById("experimental-spaced-repetition").checked,
+    });
+});
+
 document.getElementById("delay-correct").addEventListener("change", () => {
     var value = document.getElementById("delay-correct").value;
     re = /^\d(\.\d{1,2})?$/; //makes sure is number between 0 and 10 (exclusive) with max two decimals
@@ -188,6 +195,8 @@ ipcRenderer.on("globalSettings:getAll", (e, settings) => {
     document.getElementById("times-correct").value = settings.timesCorrect;
     document.getElementById("penalize-incorrect").checked =
         settings.penalizeIncorrect;
+    document.getElementById("experimental-spaced-repetition").checked =
+        settings.experimentalSpacedRepetition;
     document.getElementById("delay-correct").value = settings.delayCorrect;
     document.getElementById("delay-incorrect").value = settings.delayIncorrect;
     document.getElementById("study-font-size").value = settings.studyFontSize;
