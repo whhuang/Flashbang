@@ -12,7 +12,6 @@ var answerShown = false,
     studyComplete = false;
 var pairs; //pairs is all pairs in bunch, current pair is the one currently being displayed
 var menuToggled = false;
-var currentReversed; // bool if the currentPair is asked standard or reversed
 let pairsRef = []; //array of references to each pair
 let flaggedPairs = []; //array of references to each flagged pair (experimental-use only)
 
@@ -159,17 +158,7 @@ document.getElementById("say-answer").addEventListener("change", () => {
     bunchSettings.sayAnswer = document.getElementById("say-answer").checked;
 });
 
-document.getElementById("show-pinyin").addEventListener("change", () => {
-    ipcRenderer.send("bunch:set", id, {
-        key: "showPinyin",
-        value: document.getElementById("show-pinyin").checked,
-    });
-    //TODO do this with get request,
-    bunchSettings.showPinyin = document.getElementById("show-pinyin").checked;
 
-    updatePromptPinyin();
-    displayCard();
-});
 
 document.getElementById("hide-para-text").addEventListener("change", () => {
     ipcRenderer.send("bunch:set", id, {
@@ -229,9 +218,6 @@ ipcRenderer.on("bunch:getAll", (e, bunch) => {
 
     bunchSettings.hideParaText = bunch.hideParaText;
 
-    bunchSettings.showPinyin = bunch.showPinyin;
-
-    currentReversed = bunch.pairOrder.reversed;
     studyComplete = bunch.complete;
 
     updateMenu();
@@ -436,14 +422,6 @@ function updateCalls(correct) {
     handleAnswer(correct)
 }
 
-var noTimeout; //used for incorrect forced delay
-function iWasRight() {
-    clearTimeout(incorrectTimeout);
-    noTimeout = true;
-    handleAnswer(true)
-    resetPage();
-}
-
 /* ------------------------------------------------------------------------------------------------------- */
 
 
@@ -455,7 +433,6 @@ function showAnswer() {
         document.getElementById("bottom-text").innerText =
             "Incorrect: Press 1 \n Correct: Press 2 or Space";
         answerShown = true;
-        sayChecked(currentReversed ? "prompt" : "answer");
     } else if (bunchSettings.questionType.typed) {
         document.getElementById("answer-input").blur();
         document.getElementById("answer-input").readOnly = true;
@@ -464,7 +441,7 @@ function showAnswer() {
             "Press Enter to Continue";
 
         let userAnswer = document.getElementById("answer-input").value.trim();
-        let answer = currentReversed ? currentPair.prompt : currentPair.answer;
+        let answer = currentPair.answer;
 
         if (typedCorrect(userAnswer, answer)) {
             updateCalls(true);
@@ -482,11 +459,7 @@ function showAnswer() {
             incorrectTimeout = setTimeout(() => {
                 noTimeout = true;
             }, settings.delayIncorrect * 1000);
-            if (!settings.experimentalSpacedRepetition) {
-                updateCalls(false);
-            }
             styleAnswer(false);
-            sayChecked(currentReversed ? "prompt" : "answer");
         }
     }
 }
@@ -547,6 +520,7 @@ function typedCorrect(userAnswer, answer) {
     return false;
 }
 
+var noTimeout; //used for incorrect forced delay
 function answerManager(e) {
     if (bunchSettings.questionType.flashcard) {
         if (!answerShown) {
@@ -572,6 +546,7 @@ function answerManager(e) {
         } else {
             if (e.key === "Enter" && noTimeout) {
                 clearTimeout(correctTimeout);
+                handleAnswer(false);
                 resetPage();
             } else if (
                 (e.metaKey && e.key.toLowerCase() === "d") ||
@@ -583,60 +558,11 @@ function answerManager(e) {
     }
 }
 
-function sayChecked(type) {
-    //this is confusing, prompt and answer mean different things in dif places
-    //here they refer to if the term is currentpair.answer or current pair.prompt
-    if (
-        (type == "answer" && bunchSettings.sayAnswer) ||
-        (type == "prompt" && bunchSettings.sayPrompt)
-    ) {
-        window.speechSynthesis.cancel(); //stops all previous call
-        let lang, string;
-        if (type == "prompt") {
-            lang = bunchSettings.promptLang;
-            string = currentPair.prompt;
-        } else if (type == "answer") {
-            lang = bunchSettings.answerLang;
-            string = currentPair.answer;
-        }
-
-        const rmp = /\(.*?\)/g; //removes parenthesis and text btw them
-        string = settings.ignoreParenthesis
-            ? string.replace(rmp, "").trim()
-            : string;
-
-        var msg = new SpeechSynthesisUtterance(string);
-        msg.lang = lang;
-        window.speechSynthesis.speak(msg);
-    }
-}
-
-function sayClicked(type) {
-    //inputs type "prompt" for prompt; "answer" for answer
-    //this is confusing, prompt and answer mean different things in dif places
-    //here they refer to if the user clicked on the prompt (given) or answer (hidden)
-    window.speechSynthesis.cancel(); //stops all previous call
-    let lang, string;
-    if (type == "prompt") {
-        lang = currentReversed
-            ? bunchSettings.answerLang
-            : bunchSettings.promptLang;
-        string = currentReversed ? currentPair.answer : currentPair.prompt;
-    } else if (type == "answer") {
-        lang = currentReversed
-            ? bunchSettings.promptLang
-            : bunchSettings.answerLang;
-        string = currentReversed ? currentPair.prompt : currentPair.answer;
-    }
-
-    const rmp = /\(.*?\)/g; //removes parenthesis and text btw them
-    string = settings.ignoreParenthesis
-        ? string.replace(rmp, "").trim()
-        : string;
-
-    var msg = new SpeechSynthesisUtterance(string);
-    msg.lang = lang;
-    window.speechSynthesis.speak(msg);
+function iWasRight() {
+    clearTimeout(incorrectTimeout);
+    noTimeout = true;
+    handleAnswer(true);
+    resetPage();
 }
 
 //#endregion
@@ -653,14 +579,6 @@ function updateHTML() {
     document.getElementById("hide-para-text").checked =
         bunchSettings.hideParaText;
 
-    if (pinyinLang(bunchSettings.promptLang)) {
-        document
-            .getElementById("pinyin-option-section")
-            .classList.remove("undisplay");
-        document.getElementById("show-pinyin").checked =
-            bunchSettings.showPinyin;
-    }
-
     const root = document.querySelector(":root");
     root.style.fontSize = `${settings.studyFontSize}px`;
 
@@ -673,9 +591,6 @@ function updateHTML() {
         if (bunchSettings.questionType.flashcard) {
             document.getElementById("main-container").innerHTML = `
             <div id="prompt-container"> 
-                <div id="pinyin-container">
-                    <p class="hide" id="pinyin-text"></p>
-                </div>
                 <h2 class="" id="prompt"></h2>
             </div>
             <div class="hide ${
@@ -690,14 +605,9 @@ function updateHTML() {
 
             changeDisplayTypedAndFlashcard();
             initBottomContainer();
-            ttsTypedAndFlashcardEventListeners();
-            pinyinTypedAndFlashcardHTML();
         } else if (bunchSettings.questionType.typed) {
             document.getElementById("main-container").innerHTML = `
             <div id="prompt-container"> 
-                <div id="pinyin-container">
-                    <p class="hide" id="pinyin-text"></p>
-                </div>
                 <h2 id="prompt">Lorem</h2>
             </div>
             <div id="typed-container">
@@ -723,8 +633,6 @@ function updateHTML() {
 
             changeDisplayTypedAndFlashcard();
             initBottomContainer();
-            ttsTypedAndFlashcardEventListeners();
-            pinyinTypedAndFlashcardHTML();
         } else if (bunchSettings.questionType.test) {
             //checking boxes
 
@@ -848,17 +756,6 @@ function initBottomContainer() {
     }
 }
 
-function ttsTypedAndFlashcardEventListeners() {
-    //event listeners for text to speech on click
-    document.getElementById("prompt").addEventListener("click", () => {
-        sayClicked("prompt");
-    });
-
-    document.getElementById("answer").addEventListener("click", () => {
-        sayClicked("answer");
-    });
-}
-
 function changeDisplayTypedAndFlashcard() {
     document.getElementById("edit-bunch-btn").classList.remove("undisplay");
 
@@ -882,53 +779,6 @@ function changeDisplayTypedAndFlashcard() {
     document.getElementById("format-options").classList.remove("undisplay");
 
     document.getElementById("test-config-options").classList.add("undisplay");
-}
-
-function pinyinTypedAndFlashcardHTML() {
-    if (
-        pinyinLang(bunchSettings.promptLang) ||
-        pinyinLang(bunchSettings.answerLang)
-    ) {
-        document.getElementById("pinyin-text").addEventListener("click", () => {
-            addPinYinText(currentPrompt(), true);
-        });
-
-        //event listeners for piniyn
-        document.getElementById("prompt").addEventListener("mouseenter", () => {
-            if (!bunchSettings.showPinyin) {
-                if (
-                    (!currentReversed &&
-                        pinyinLang(bunchSettings.promptLang)) ||
-                    (currentReversed && pinyinLang(bunchSettings.answerLang))
-                ) {
-                    addPinYinText(currentPrompt(), false);
-                    document
-                        .getElementById("pinyin-text")
-                        .classList.remove("hide");
-                } else {
-                    document
-                        .getElementById("pinyin-text")
-                        .classList.add("hide");
-                }
-            }
-        });
-
-        document.getElementById("prompt").addEventListener("mouseleave", () => {
-            if (!bunchSettings.showPinyin) {
-                document.getElementById("pinyin-text").classList.add("hide");
-            }
-        });
-    }
-
-    if (
-        bunchSettings.showPinyin &&
-        ((!currentReversed && pinyinLang(bunchSettings.promptLang)) ||
-            (currentReversed && pinyinLang(bunchSettings.answerLang)))
-    ) {
-        document.getElementById("pinyin-text").classList.remove("hide");
-    } else {
-        document.getElementById("pinyin-text").classList.add("hide");
-    }
 }
 
 function genTestMC(pair, index) {
@@ -1354,40 +1204,14 @@ function checkTest() {
         .classList.remove("undisplay");
 }
 
-function updatePromptPinyin() {
-    if (bunchSettings.showPinyin)
-        if (
-            (!currentReversed && pinyinLang(bunchSettings.promptLang)) ||
-            (currentReversed && pinyinLang(bunchSettings.answerLang))
-        ) {
-            addPinYinText(currentPrompt(), false);
-            document.getElementById("pinyin-text").classList.remove("hide");
-        } else {
-            document.getElementById("pinyin-text").classList.add("hide");
-        }
-    else {
-        document.getElementById("pinyin-text").classList.add("hide");
-    }
-}
-
 function displayCard() {
     if (!studyComplete) {
         //this is called from bunch:getAll when studyis complete sometimes. this is to stop it from that
-        if (currentReversed) {
-            document.getElementById("prompt").innerText =
-                bunchSettings.showPinyin || bunchSettings.hideParaText
-                    ? currentPair.answer.replace(/\(.*?\)/g, "")
-                    : currentPair.answer;
-            document.getElementById("answer").innerText = currentPair.prompt;
-        } else {
-            document.getElementById("prompt").innerText =
-                bunchSettings.showPinyin || bunchSettings.hideParaText
-                    ? currentPair.prompt.replace(/\(.*?\)/g, "")
-                    : currentPair.prompt;
-            document.getElementById("answer").innerText = currentPair.answer;
-        }
-        updatePromptPinyin();
-        sayChecked(currentReversed ? "answer" : "prompt");
+        document.getElementById("prompt").innerText =
+            bunchSettings.hideParaText
+                ? currentPair.prompt.replace(/\(.*?\)/g, "")
+                : currentPair.prompt;
+        document.getElementById("answer").innerText = currentPair.answer;
 
         answerShown = false;
     }
@@ -1450,28 +1274,6 @@ function studyCompleteHTML() {
     document.getElementById("bottom-text").classList.remove("undisplay");
     document.getElementById("options-btn").classList.add("hide");
     document.getElementById("remaining-text").classList.add("undisplay");
-}
-
-function addPinYinText(val, poly) {
-    if (val.trim() != "") {
-        if (val.includes("(") && val.includes(")")) {
-            // const rmp = /\(.*?\)/g; //removes parenthesis and text btw them
-            // val = val.replace(rmp, "").trim();
-            val = val.match(/\(([^)]+)\)/)[1]; //gets text in parenthesis
-            document.getElementById("pinyin-text").innerText = val;
-        } else {
-            // * @param str Chinese character to be converted
-            // * @param splitter separated characters, separated by spaces by default
-            // * @param withtone return Whether the result contains tones, the default is
-            // * @param polyphone Whether polyphone supports polyphones, the default is no
-            document.getElementById("pinyin-text").innerText = poly
-                ? `${pinyinUtil.getPinyin(val, " ", true, poly)}`.replaceAll(
-                      ",",
-                      " / "
-                  )
-                : `${pinyinUtil.getPinyin(val, " ", true, false)}`;
-        }
-    }
 }
 
 function updateRemainingText() {
@@ -1537,12 +1339,3 @@ function resetPage() {
     setPairs();
 }
 //#endregion
-
-function pinyinLang(lang) {
-    //returns bool representing if lang is a pinyin lang
-    return lang == "zh-CN" || lang == "zh-HK" || lang == "zh-TW";
-}
-
-function currentPrompt() {
-    return currentReversed ? currentPair.answer : currentPair.prompt;
-}
