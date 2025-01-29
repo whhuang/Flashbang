@@ -274,152 +274,6 @@ function updateMenu() {
 /*                              Bunch Management                              */
 /* -------------------------------------------------------------------------- */
 
-let lastPrompt;
-function setCurrentPair() {
-    if (settings.experimentalSpacedRepetition) {
-        setCurrentPairExperimental()
-    } else {
-        let index = Math.floor(Math.random() * pairsRef.length);
-
-        let count = 0;
-        if (pairsRef.length > 1) {
-            while (pairsRef[index].prompt === lastPrompt && count < 5) {
-                index = Math.floor(Math.random() * pairsRef.length);
-                count += 1; //after five tries j continue anyway (need this for repeat prompts)
-            }
-            lastPrompt = pairsRef[index].prompt;
-        }
-        currentPair = pairsRef[index];
-    }
-
-    if (bunchSettings.pairOrder.bothrs) {
-        if (currentPair.revCalls > 0) {
-            //if it is reversed then standard, then we need to flip order
-            currentReversed = true;
-        } else {
-            currentReversed = false;
-        }
-    } else {
-        if (currentPair.calls > 0) {
-            currentReversed = false;
-        } else {
-            currentReversed = true;
-        }
-    }
-
-    displayCard();
-}
-
-function createPairsRef() {
-    if (settings.experimentalSpacedRepetition) {
-        createPairsRefExperimental()
-    } else {
-        pairsRef = [];
-        if (bunchSettings.pairOrder.standard) {
-            for (x = 0; x < pairs.length; x++) {
-                if (pairs[x].calls > 0) {
-                    pairsRef.push(pairs[x]); //"Objects and arrays are pushed as a pointer to the original object"
-                }
-            }
-        } else if (bunchSettings.pairOrder.reversed) {
-            for (x = 0; x < pairs.length; x++) {
-                if (pairs[x].revCalls > 0) {
-                    pairsRef.push(pairs[x]);
-                }
-            }
-        } else if (
-            bunchSettings.pairOrder.bothsr ||
-            bunchSettings.pairOrder.bothrs
-        ) {
-            for (x = 0; x < pairs.length; x++) {
-                if (pairs[x].calls > 0 || pairs[x].revCalls > 0) {
-                    pairsRef.push(pairs[x]);
-                }
-            }
-        }
-    }
-    setCurrentPair();
-    updateRemainingText();
-}
-
-function generateCalls() {
-    if (settings.experimentalSpacedRepetition) {
-        generateCallsExperimental()
-    } else {
-        if (bunchSettings.pairOrder.bothrs || bunchSettings.pairOrder.bothsr) {
-            for (x = 0; x < pairs.length; x++) {
-                pairs[x].calls = settings.timesCorrect;
-                pairs[x].revCalls = settings.timesCorrect;
-            }
-        } else if (bunchSettings.pairOrder.reversed) {
-            for (x = 0; x < pairs.length; x++) {
-                pairs[x].calls = 0;
-                pairs[x].revCalls = settings.timesCorrect;
-            }
-        } else if (bunchSettings.pairOrder.standard) {
-            for (x = 0; x < pairs.length; x++) {
-                pairs[x].calls = settings.timesCorrect;
-                pairs[x].revCalls = 0;
-            }
-        }
-    }
-    setPairs();
-    createPairsRef();
-}
-
-let prevNumCalls;
-function updateCalls(correct) {
-    if (settings.experimentalSpacedRepetition) {
-        updateCallsExperimental(correct)
-    } else {
-        if (correct) {
-            callsString = currentReversed ? "revCalls" : "calls";
-            if (currentPair[callsString] > 0) {
-                currentPair[callsString] -= 1;
-                if (currentPair["calls"] === 0 && currentPair["revCalls"] === 0) {
-                    const index = pairsRef.indexOf(currentPair);
-                    pairsRef.splice(index, 1);
-                }
-            }
-        } else {
-            callsString = currentReversed ? "revCalls" : "calls";
-            prevNumCalls = currentPair[callsString];
-            if (
-                currentPair[callsString] !== 0 &&
-                currentPair[callsString] < settings.timesCorrect &&
-                settings.penalizeIncorrect
-            ) {
-                currentPair[callsString] += 1;
-            }
-        }
-    }
-}
-
-var noTimeout; //used for incorrect forced delay
-function iWasRight() {
-    clearTimeout(incorrectTimeout);
-    noTimeout = true;
-
-    if (settings.experimentalSpacedRepetition) {
-        iWasRightExperimental()
-    } else {
-        callsString = currentReversed ? "revCalls" : "calls";
-
-        if (prevNumCalls === settings.timesCorrect) {
-            //if calls was as high as possible
-            currentPair[callsString] -= 1; //only take away one bc the initial incorrect did nothing
-        } else {
-            currentPair[callsString] -= 2; //one to correct initial incorrect and one for right answer
-        }
-
-        if (currentPair["calls"] === 0 && currentPair["revCalls"] === 0) {
-            const index = pairsRef.indexOf(currentPair);
-            pairsRef.splice(index, 1);
-        }
-    }
-    resetPage();
-}
-
 /* ------------------------------------------------------------------------------------------------------- */
 
 // Spaced-repetition algorithm that introduces new terms very slowly.
@@ -446,7 +300,9 @@ function iWasRight() {
 // +---------------+--------------+--------------------------------------+
 // | 0< <50%       | n (>=7)      | (n - 6)*100 (deprioritized)          |
 // +---------------+--------------+--------------------------------------+
-// | 0%            | 0            | n*100 (deprioritized)                |
+// | 0%            | 0 - 1        | 0 (deprioritized)                    |
+// +---------------+--------------+--------------------------------------+
+// | 0%            | n (>1)       | (n - 1) * 100 (deprioritized)        |
 // +---------------+--------------+--------------------------------------+
 //
 // Each term has a "score", which is index + when to show word again value.
@@ -454,7 +310,7 @@ function iWasRight() {
 // randomly choose term using weights
 // TODO: add reset button to reset stored values
 
-function createPairsRefExperimental() {
+function createPairsRef() {
     if (!Array.isArray(pairsRef) || pairsRef.length === 0) {
         pairsRef = [];
         if (bunchSettings.pairOrder.standard) {
@@ -472,9 +328,12 @@ function createPairsRefExperimental() {
             }
         }
     }
+
+    setCurrentPair();
+    updateRemainingText();
 }
 
-function setCurrentPairExperimental() {
+function setCurrentPair() {
     let assigned = false;
     for (x = 0; x < flaggedPairs.length; x++) {
         if (flaggedPairs[x]['scheduledNext'] === 0) {
@@ -496,9 +355,14 @@ function setCurrentPairExperimental() {
             currentItem.scheduledNext < minItem.scheduledNext ? currentItem : minItem
         );
     }
+
+    displayCard();
 }
 
-function generateCallsExperimental() {}
+function generateCalls() {
+    setPairs();
+    createPairsRef();
+}
 
 function handleAnswer(correct) {
     currentPair['timesSeen'] += 1;
@@ -554,23 +418,31 @@ function handleAnswer(correct) {
             }
         }
     } else {
-        score = lastNRight * 100;
+        score = lastNRight < 2 ? 0 : (lastNRight - 1) * 100;
+        // Put it back in the normal queue if needed
+        const index = pairsRef.indexOf(currentPair);
+        if (index === -1) {
+            // Pop pair from flaggedPairs and push to normal pairsRef
+            pairsRef.push(currentPair);
+            const flaggedPairsIndex = flaggedPairs.indexOf(currentPair);
+            flaggedPairs.splice(flaggedPairsIndex, 1);
+        }
     }
 
     currentPair['scheduledNext'] = score
 }
 
-function updateCallsExperimental(correct) {
+function updateCalls(correct) {
     handleAnswer(correct)
 }
 
-function iWasRightExperimental() {
+var noTimeout; //used for incorrect forced delay
+function iWasRight() {
+    clearTimeout(incorrectTimeout);
+    noTimeout = true;
     handleAnswer(true)
+    resetPage();
 }
-
-// function handleTypedAnswer(correct) {
-//     handleAnswer(correct)
-// }
 
 /* ------------------------------------------------------------------------------------------------------- */
 
@@ -610,7 +482,9 @@ function showAnswer() {
             incorrectTimeout = setTimeout(() => {
                 noTimeout = true;
             }, settings.delayIncorrect * 1000);
-            updateCalls(false);
+            if (!settings.experimentalSpacedRepetition) {
+                updateCalls(false);
+            }
             styleAnswer(false);
             sayChecked(currentReversed ? "prompt" : "answer");
         }
@@ -1520,6 +1394,7 @@ function displayCard() {
 }
 
 function styleAnswer(correct) {
+    document.getElementById("answer").classList.remove("hide");
     if (correct) {
         const input = document.getElementById("answer-input");
         // input.style.border = `2px solid ${correctGreen}`;
@@ -1528,7 +1403,6 @@ function styleAnswer(correct) {
         statusBlock.innerHTML = "&#10004";
         statusBlock.classList.remove("hide");
     } else {
-        document.getElementById("answer").classList.remove("hide");
         if (settings.showIwr) {
             document
                 .getElementById("iwr-btn-container")
@@ -1624,7 +1498,11 @@ function updateRemainingTextExperimental() {
         if (pairsRef[x].scheduledNext === 0) {
             notSeen += 1;
         } else {
-            learned += 1;
+            if (pairsRef[x].timesSeen < 2) {
+                learning += 1;
+            } else {
+                learned += 1;
+            }
         }
     }
     document.getElementById(
