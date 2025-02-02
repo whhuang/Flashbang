@@ -109,26 +109,6 @@ function generatePairsHTML() {
     var newPair = document.createElement('div');
     newPair.classList.add('pair');
 
-    if (pairs[x].calls != null) {
-      newPair.setAttribute('calls', pairs[x].calls);
-    } else {
-      newPair.setAttribute(
-          'calls',
-          pairOrder.standard || pairOrder.bothsr || pairOrder.bothrs ?
-              timesCorrect :
-              0);
-    }
-
-    if (pairs[x].revCalls != null) {
-      newPair.setAttribute('revCalls', pairs[x].revCalls);
-    } else {
-      newPair.setAttribute(
-          'revCalls',
-          pairOrder.reversed || pairOrder.bothsr || pairOrder.bothrs ?
-              timesCorrect :
-              0);
-    }
-
     newPair.innerHTML = `
             <p class="index">${x + 1}</p>
             <div class="input-holder">
@@ -154,34 +134,7 @@ function generatePairsHTML() {
             </div>`;
     document.getElementById('pair-container').appendChild(newPair);
   }
-
-  // removed feature for now
-  //  const htmlPairs = document.getElementsByClassName("pair");
-  //  for (x = 0; x < htmlPairs.length; x++) {
-  //      htmlPairs[x].addEventListener("change", (e) => {
-  //          // resetPairCalls(e);
-  //      });
-  //  }
 }
-
-// function resetPairCalls(e) {
-//     e.target
-//         .closest(".pair")
-//         .setAttribute(
-//             "calls",
-//             pairOrder.standard || pairOrder.bothsr || pairOrder.bothrs
-//                 ? timesCorrect
-//                 : 0
-//         );
-//     e.target
-//         .closest(".pair")
-//         .setAttribute(
-//             "revCalls",
-//             pairOrder.reversed || pairOrder.bothsr || pairOrder.bothrs
-//                 ? timesCorrect
-//                 : 0
-//         );
-// }
 
 function refactorIndicies() {
   const indicies = document.getElementsByClassName('index');
@@ -200,7 +153,6 @@ var editingPairs = false;  // represents if X's show to delete pairs
 
 // calls management
 let timesCorrect;
-let pairOrder, questionType;
 
 document.getElementById('edit-pairs').addEventListener('click', (e) => {
   editingPairs = !editingPairs;
@@ -235,17 +187,6 @@ document.getElementById('plus').addEventListener('click', (e) => {
 
   var newPair = document.createElement('div');
   newPair.classList.add('pair');
-
-  newPair.setAttribute(
-      'calls',
-      pairOrder.standard || pairOrder.bothsr || pairOrder.bothrs ?
-          timesCorrect :
-          0);
-  newPair.setAttribute(
-      'revCalls',
-      pairOrder.reversed || pairOrder.bothsr || pairOrder.bothrs ?
-          timesCorrect :
-          0);
 
   newPair.innerHTML = `
         <p class="index">${idNum}</p>
@@ -624,14 +565,10 @@ function makePairs() {
   for (x = 0; x < htmlPairs.length; x++) {
     let prompt = htmlPairs[x].getElementsByClassName('prompt')[0].value;
     let answer = htmlPairs[x].getElementsByClassName('answer')[0].value;
-    let calls = htmlPairs[x].getAttribute('calls');
-    let revCalls = htmlPairs[x].getAttribute('revCalls');
     if (prompt !== '' && answer !== '') {
       madePairs[x - redacted] = {
         prompt: prompt.trim(),
         answer: answer.trim(),
-        calls: parseInt(calls),
-        revCalls: parseInt(revCalls),
       };
     } else {
       redacted += 1;
@@ -677,7 +614,6 @@ ipcRenderer.send('bunch:getAll', id);
 
 ipcRenderer.on('bunch:getAll', (e, bunch) => {
   pairs = JSON.parse(JSON.stringify(bunch.pairs));
-  pairOrder = JSON.parse(JSON.stringify(bunch.pairOrder));
   questionType = JSON.parse(JSON.stringify(bunch.questionType));
   document.getElementById('title-input').value = bunch.title;
   if (pairs.length < 3) {

@@ -20,7 +20,6 @@ class Settings {
             showIwr: true,
             timesCorrect: 2,
             penalizeIncorrect: true,
-            experimentalSpacedRepetition: false,
             delayCorrect: 1,
             delayIncorrect: 0,
             studyFontSize: 18,

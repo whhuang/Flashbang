@@ -74,37 +74,6 @@ document.getElementById("back-btn").addEventListener("click", () => {
     window.location.href = `index.html`;
 });
 
-//pair order
-var orderRadios = document.querySelectorAll('input[name="pairOrder"]');
-Array.prototype.forEach.call(orderRadios, (radio) => {
-    radio.addEventListener("change", onOrderChange);
-});
-
-var orderRadiosTest = document.querySelectorAll('input[name="pairOrderTest"]');
-Array.prototype.forEach.call(orderRadiosTest, (radio) => {
-    radio.addEventListener("change", generateTest);
-});
-
-function onOrderChange() {
-    ipcRenderer.send("bunch:set", id, {
-        key: "pairOrder",
-        value: {
-            standard: document.getElementById("standard").checked,
-            reversed: document.getElementById("reversed").checked,
-            bothsr: document.getElementById("bothsr").checked,
-            bothrs: document.getElementById("bothrs").checked,
-        },
-    });
-    bunchSettings.pairOrder = {
-        //TODO this should be done via get req to main
-        standard: document.getElementById("standard").checked,
-        reversed: document.getElementById("reversed").checked,
-        bothsr: document.getElementById("bothsr").checked,
-        bothrs: document.getElementById("bothrs").checked,
-    };
-    generateCalls();
-}
-
 //question type
 var typeRadios = document.querySelectorAll('input[name="questionType"]');
 Array.prototype.forEach.call(typeRadios, (radio) => {
@@ -210,7 +179,6 @@ ipcRenderer.on("bunch:getAll", (e, bunch) => {
     bunchSettings.promptLang = bunch.promptLang;
     bunchSettings.answerLang = bunch.answerLang;
 
-    bunchSettings.pairOrder = bunch.pairOrder;
     bunchSettings.questionType = bunch.questionType;
 
     bunchSettings.sayPrompt = bunch.sayPrompt;
@@ -299,19 +267,15 @@ function updateMenu() {
 function createPairsRef() {
     if (!Array.isArray(pairsRef) || pairsRef.length === 0) {
         pairsRef = [];
-        if (bunchSettings.pairOrder.standard) {
-            for (x = 0; x < pairs.length; x++) {
-                pairsRef.push({
-                    'prompt': pairs[x]['prompt'],
-                    'answer': pairs[x]['answer'],
-                    'calls': 1, // deprecate eventually
-                    'revCalls': 0, // deprecate eventually
-                    'timesSeen': 0,
-                    'totalRight': 0,
-                    'lastNRight': 0,
-                    'scheduledNext': 0,
-                });
-            }
+        for (x = 0; x < pairs.length; x++) {
+            pairsRef.push({
+                'prompt': pairs[x]['prompt'],
+                'answer': pairs[x]['answer'],
+                'timesSeen': 0,
+                'totalRight': 0,
+                'lastNRight': 0,
+                'scheduledNext': 0,
+            });
         }
     }
 
@@ -657,12 +621,6 @@ function updateHTML() {
                 .classList.add("undisplay");
 
             document
-                .getElementById("pair-order-flash-typed")
-                .classList.add("undisplay");
-            document
-                .getElementById("pair-order-test")
-                .classList.remove("undisplay");
-            document
                 .getElementById("test-config-options")
                 .classList.remove("undisplay");
 
@@ -710,24 +668,8 @@ function updateOptionsMenu() {
     document.getElementById("ask-test").checked =
         bunchSettings.questionType.test;
 
-    document.getElementById("standard").checked =
-        bunchSettings.pairOrder.standard;
-    document.getElementById("reversed").checked =
-        bunchSettings.pairOrder.reversed;
-    document.getElementById("bothsr").checked = bunchSettings.pairOrder.bothsr;
-    document.getElementById("bothrs").checked = bunchSettings.pairOrder.bothrs;
-
     document.getElementById("say-prompt").checked = bunchSettings.sayPrompt;
     document.getElementById("say-answer").checked = bunchSettings.sayAnswer;
-
-    //test stuff
-    document.getElementById("standard-test").checked =
-        bunchSettings.pairOrder.standard;
-    document.getElementById("reversed-test").checked =
-        bunchSettings.pairOrder.reversed;
-    if (bunchSettings.pairOrder.bothsr || bunchSettings.pairOrder.bothrs) {
-        document.getElementById("both-test").checked = true;
-    }
 
     document.getElementById("MC-test-toggle").checked = true;
     document.getElementById("typed-test-toggle").checked = true;
@@ -769,11 +711,6 @@ function changeDisplayTypedAndFlashcard() {
     document
         .getElementById("main-container")
         .classList.remove("test-main-container");
-
-    document.getElementById("pair-order-test").classList.add("undisplay");
-    document
-        .getElementById("pair-order-flash-typed")
-        .classList.remove("undisplay");
 
     document.getElementById("say-options").classList.remove("undisplay");
     document.getElementById("format-options").classList.remove("undisplay");
@@ -1278,38 +1215,24 @@ function studyCompleteHTML() {
 
 function updateRemainingText() {
     if (settings.showRemaining && !inResetMenu) {
-        if (settings.experimentalSpacedRepetition) {
-            updateRemainingTextExperimental()
-        } else {
-            let remainingCount = 0;
-            for (x = 0; x < pairsRef.length; x++) {
-                remainingCount += pairsRef[x].revCalls + pairsRef[x].calls;
-            }
-            document.getElementById(
-                "remaining-text"
-            ).innerText = `${remainingCount} remaining`;
-        }
-    }
-}
-
-function updateRemainingTextExperimental() {
-    let notSeen = 0;
-    let learned = 0;
-    let learning = flaggedPairs.length;
-    for (x = 0; x < pairsRef.length; x++) {
-        if (pairsRef[x].scheduledNext === 0) {
-            notSeen += 1;
-        } else {
-            if (pairsRef[x].timesSeen < 2) {
-                learning += 1;
+        let notSeen = 0;
+        let learned = 0;
+        let learning = flaggedPairs.length;
+        for (x = 0; x < pairsRef.length; x++) {
+            if (pairsRef[x].scheduledNext === 0) {
+                notSeen += 1;
             } else {
-                learned += 1;
+                if (pairsRef[x].timesSeen < 2) {
+                    learning += 1;
+                } else {
+                    learned += 1;
+                }
             }
         }
+        document.getElementById(
+            "remaining-text"
+        ).innerText = `${learning} learning | ${notSeen} new | ${learned} learned`;
     }
-    document.getElementById(
-        "remaining-text"
-    ).innerText = `${learning} learning | ${notSeen} new | ${learned} learned`;
 }
 //#endregion
 

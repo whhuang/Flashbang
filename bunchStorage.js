@@ -26,12 +26,6 @@ class BunchStorage {
             complete: false,
             promptLang: "en-US",
             answerLang: "en-US",
-            pairOrder: {
-                standard: true,
-                reversed: false,
-                bothSR: false,
-                bothRS: false,
-            },
             questionType: {
                 flashcard: true,
                 typed: false,
